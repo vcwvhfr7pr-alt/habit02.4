@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Трекер привычек</title>
+
+  <!-- Подключаем стили и скрипт Telegram Mini App -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ========== НАВИГАЦИЯ ========== -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" onclick="showPage('habits')" id="nav-habits">
+      <span class="nav-icon">✓</span>
+      <span>Привычки</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('progress')" id="nav-progress">
+      <span class="nav-icon">📊</span>
+      <span>Прогресс</span>
+    </button>
+  </nav>
+
+  <!-- ========== СТРАНИЦА 1: ПРИВЫЧКИ ========== -->
+  <div id="page-habits" class="page active">
+    <div class="page-header">
+      <h1>Мои привычки</h1>
+      <!-- Навигация по дням: стрелки + дата -->
+      <div class="date-nav">
+        <button class="date-arrow" onclick="changeDay(-1)">‹</button>
+        <div class="date-nav-center" onclick="goToToday()">
+          <div class="today-label" id="today-label"></div>
+          <div class="today-back-hint" id="today-back-hint"></div>
+        </div>
+        <button class="date-arrow" onclick="changeDay(1)" id="btn-next-day">›</button>
+      </div>
+    </div>
+
+    <!-- Список привычек (заполняется через JS) -->
+    <div id="habits-list" class="habits-list"></div>
+
+    <!-- Кнопка "Добавить привычку" -->
+    <button class="add-btn" onclick="openAddModal()">+ Добавить привычку</button>
+  </div>
+
+  <!-- ========== СТРАНИЦА 2: ПРОГРЕСС ========== -->
+  <div id="page-progress" class="page">
+    <div class="page-header">
+      <h1>Прогресс</h1>
+      <!-- Переключатель периода -->
+      <div class="period-tabs">
+        <button class="period-tab active" onclick="selectPeriod(7, this)">1 нед</button>
+        <button class="period-tab" onclick="selectPeriod(14, this)">2 нед</button>
+        <button class="period-tab" onclick="selectPeriod(30, this)">Месяц</button>
+        <button class="period-tab" onclick="selectPeriod(180, this)">6 мес</button>
+        <button class="period-tab" onclick="selectPeriod(365, this)">Год</button>
+      </div>
+    </div>
+
+    <!-- Список прогресса (заполняется через JS) -->
+    <div id="progress-list" class="progress-list"></div>
+  </div>
+
+  <!-- ========== МОДАЛЬНОЕ ОКНО: ДОБАВИТЬ ПРИВЫЧКУ ========== -->
+  <div id="add-modal" class="modal-overlay" onclick="closeModalOnOverlay(event)">
+    <div class="modal">
+      <h2>Новая привычка</h2>
+
+      <!-- Поле названия -->
+      <label for="habit-name">Название</label>
+      <input type="text" id="habit-name" placeholder="Например: Читать 30 минут" maxlength="50" />
+
+      <!-- Выбор цели -->
+      <label for="habit-goal">Цель</label>
+      <select id="habit-goal">
+        <option value="7">1 неделя</option>
+        <option value="14">2 недели</option>
+        <option value="30" selected>1 месяц</option>
+        <option value="180">6 месяцев</option>
+        <option value="365">1 год</option>
+      </select>
+
+      <!-- Кнопки -->
+      <div class="modal-buttons">
+        <button class="btn-cancel" onclick="closeAddModal()">Отмена</button>
+        <button class="btn-save" onclick="saveHabit()">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== МОДАЛЬНОЕ ОКНО: ОПЦИИ ПРИВЫЧКИ ========== -->
+  <div id="options-modal" class="modal-overlay" onclick="closeModalOnOverlay(event)">
+    <div class="modal">
+      <h2 id="options-modal-title">Привычка</h2>
+
+      <!-- Удалить привычку -->
+      <button class="option-btn danger" onclick="deleteHabit()">
+        🗑️ Удалить привычку
+      </button>
+
+      <button class="btn-cancel" style="width:100%;margin-top:8px" onclick="closeOptionsModal()">Закрыть</button>
+    </div>
+  </div>
+
+  <!-- Подключаем наш главный скрипт -->
+  <script src="js/app.js"></script>
+</body>
+</html>
