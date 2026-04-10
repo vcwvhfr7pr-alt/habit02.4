@@ -90,7 +90,21 @@ body {
   border-radius: 14px;
   padding: 12px 14px;
   margin-bottom: 8px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  user-select: none;
+}
+
+/* Карточка выполнена — зелёный контур и лёгкая заливка */
+.habit-card.done {
+  background: var(--success-light);
+  border-color: var(--success);
+}
+
+.habit-card:active {
+  transform: scale(0.985);
+  transition: transform 0.1s;
 }
 
 /* Верхняя строка карточки */
@@ -160,31 +174,16 @@ body {
   border-radius: 20px;
 }
 
-/* Кнопка "Выполнено" — компактная, в одну строку с бейджами */
+/* Статус выполнения — иконка справа, не кнопка */
 .check-btn {
   margin-left: auto;
   flex-shrink: 0;
-  padding: 4px 12px;
-  border-radius: 20px;
-  border: 1.5px solid var(--primary);
-  background: transparent;
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 18px;
+  line-height: 1;
+  background: none;
+  border: none;
   cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-/* Когда привычка уже выполнена — кнопка становится зелёной */
-.check-btn.done {
-  background: var(--success-light);
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.check-btn:active {
-  transform: scale(0.97);
+  pointer-events: none; /* клик обрабатывает карточка целиком */
 }
 
 /* ==========================================
@@ -494,18 +493,22 @@ body {
   color: var(--text);
 }
 
-/* Прогресс-бар — сегментированный (точечный) */
+/* Прогресс-бар — сплошная полоса */
 .progress-bar-wrap {
   display: flex;
-  gap: 2px;
-  height: 8px;
+  height: 10px;
   margin: 0 0 5px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+  /* min-width 0 чтобы flex не ломался при большом числе детей */
+  min-width: 0;
 }
 
-/* Один сегмент шкалы */
+/* Один сегмент — никаких границ, никаких зазоров, сплошная полоса */
 .progress-seg {
-  flex: 1;
-  border-radius: 3px;
+  flex: 1 1 0;
+  min-width: 0;
   background: var(--border);
 }
 
