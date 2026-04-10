@@ -190,19 +190,25 @@ function renderHabits() {
     }
 
     const card = document.createElement('div');
-    card.className = 'habit-card';
-    // бейджи и кнопка — в одну строку
+    // Вся карточка кликабельна — нажатие = выполнить/снять
+    card.className = 'habit-card' + (isDone ? ' done' : '');
+    card.onclick = function(e) {
+      // Если нажали на кнопку "⋯" — не переключаем, а открываем меню
+      if (e.target.closest('.habit-options-btn')) return;
+      toggleHabit(habit.id);
+    };
     card.innerHTML =
       '<div class="habit-top">' +
         '<div class="habit-name">' + habit.name + '</div>' +
-        '<button class="habit-options-btn" onclick="openOptionsModal(\'' + habit.id + '\')">⋯</button>' +
+        '<button class="habit-options-btn" onclick="openOptionsModal(\'' + habit.id + '\')">' +
+          '⋯' +
+        '</button>' +
       '</div>' +
       '<div class="habit-info">' +
         '<span class="streak-badge">🔥 ' + streak + ' ' + pluralDays(streak) + '</span>' +
         '<span class="goal-badge">🎯 ' + goalLabel(habit.goalDays) + '</span>' +
-        '<button class="check-btn ' + (isDone ? 'done' : '') + '" onclick="toggleHabit(\'' + habit.id + '\')">' +
-          btnText +
-        '</button>' +
+        // Иконка статуса справа
+        '<span class="check-btn">' + (isDone ? '✅' : '○') + '</span>' +
       '</div>';
 
     list.appendChild(card);
@@ -233,42 +239,33 @@ function renderProgress() {
   list.innerHTML = '';
 
   habits.forEach(function(habit) {
-    // Определяем диапазон дней для шкалы
-    var days;
-    if (selectedPeriod === 0) {
-      // "Всё время" — от даты создания до сегодня
-      var created = new Date(habit.createdAt);
-      var now = new Date();
-      var diff = Math.floor((now - created) / (1000 * 60 * 60 * 24)) + 1;
-      days = Math.max(diff, 1);
-    } else {
-      days = selectedPeriod;
-    }
+    // Диапазон дней для шкалы — просто берём выбранный период
+    var days = selectedPeriod;
 
-    // Если дней слишком много — группируем (иначе сегменты будут невидимые)
-    var groupSize = 1;
+    // Шкала всегда показывает ровно столько делений, сколько дней.
+    // Каждое деление = 1 день. Это работает визуально потому что
+    // CSS flex растягивает каждое деление пропорционально ширине полосы.
+    // Никакой группировки не нужно — браузер сам делает деления тонкими.
     var segsCount = days;
-    if (days > 180) { groupSize = 14; segsCount = Math.ceil(days / 14); }
-    else if (days > 60) { groupSize = 7; segsCount = Math.ceil(days / 7); }
-
-    // Строим сегменты слева = старые, справа = свежие
-    var segments = '';
     var completedCount = 0;
 
-    for (var s = segsCount - 1; s >= 0; s--) {
-      var filled = false;
-      for (var g = 0; g < groupSize; g++) {
-        var dayIndex = s * groupSize + g;
-        if (dayIndex >= days) continue;
-        var d = new Date();
-        d.setDate(d.getDate() - dayIndex);
-        if (habit.completions[dateKey(d)]) {
-          filled = true;
-          completedCount++;
-        }
-      }
-      segments += '<div class="progress-seg' + (filled ? ' filled' : '') + '"></div>';
+    // Строим HTML для всех сегментов разом (быстрее чем по одному)
+    // s=0 → самый старый день (days-1 дней назад), s=segsCount-1 → сегодня
+    var segParts = [];
+    for (var s = 0; s < segsCount; s++) {
+      var daysAgo = segsCount - 1 - s; // 0 = сегодня, segsCount-1 = самый старый
+      var d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      var key = dateKey(d);
+      var done = !!habit.completions[key];
+      if (done) completedCount++;
+      segParts.push(done ? '1' : '0');
     }
+
+    // Собираем сегменты в одну строку HTML
+    var segments = segParts.map(function(v) {
+      return '<div class="progress-seg' + (v === '1' ? ' filled' : '') + '"></div>';
+    }).join('');
 
     var card = document.createElement('div');
     card.className = 'progress-card';
@@ -384,6 +381,51 @@ function openOptionsModal(id) {
 
 function closeOptionsModal() {
   document.getElementById('options-modal').classList.remove('open');
+  currentOptionsId = null;
+}
+
+// ==========================================
+// РЕДАКТИРОВАНИЕ ПРИВЫЧКИ
+// ==========================================
+
+function openEditModal() {
+  const habit = habits.find(function(h) { return h.id === currentOptionsId; });
+  if (!habit) return;
+
+  // Закрываем меню опций и открываем форму редактирования
+  closeOptionsModal();
+
+  // Заполняем поля текущими значениями
+  document.getElementById('edit-name').value = habit.name;
+  document.getElementById('edit-goal').value = habit.goalDays;
+  document.getElementById('edit-modal').classList.add('open');
+
+  setTimeout(function() { document.getElementById('edit-name').focus(); }, 100);
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+}
+
+function saveEdit() {
+  const name = document.getElementById('edit-name').value.trim();
+  const goalDays = parseInt(document.getElementById('edit-goal').value);
+
+  if (!name) {
+    alert('Введите название привычки!');
+    return;
+  }
+
+  const habit = habits.find(function(h) { return h.id === currentOptionsId; });
+  if (!habit) return;
+
+  // Обновляем поля — данные о выполнении НЕ трогаем
+  habit.name = name;
+  habit.goalDays = goalDays;
+
+  saveHabits();
+  renderHabits();
+  closeEditModal();
   currentOptionsId = null;
 }
 
