@@ -191,6 +191,7 @@ function renderHabits() {
 
     const card = document.createElement('div');
     card.className = 'habit-card';
+    // бейджи и кнопка — в одну строку
     card.innerHTML =
       '<div class="habit-top">' +
         '<div class="habit-name">' + habit.name + '</div>' +
@@ -199,10 +200,10 @@ function renderHabits() {
       '<div class="habit-info">' +
         '<span class="streak-badge">🔥 ' + streak + ' ' + pluralDays(streak) + '</span>' +
         '<span class="goal-badge">🎯 ' + goalLabel(habit.goalDays) + '</span>' +
-      '</div>' +
-      '<button class="check-btn ' + (isDone ? 'done' : '') + '" onclick="toggleHabit(\'' + habit.id + '\')">' +
-        btnText +
-      '</button>';
+        '<button class="check-btn ' + (isDone ? 'done' : '') + '" onclick="toggleHabit(\'' + habit.id + '\')">' +
+          btnText +
+        '</button>' +
+      '</div>';
 
     list.appendChild(card);
   });
@@ -222,7 +223,7 @@ function pluralDays(n) {
 // ==========================================
 
 function renderProgress() {
-  const list = document.getElementById('progress-list');
+  var list = document.getElementById('progress-list');
 
   if (habits.length === 0) {
     list.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><p>Добавьте привычки, чтобы<br>видеть свой прогресс.</p></div>';
@@ -232,19 +233,49 @@ function renderProgress() {
   list.innerHTML = '';
 
   habits.forEach(function(habit) {
-    const prog = calculateProgress(habit, selectedPeriod);
-    const streak = calculateStreak(habit);
+    // Определяем диапазон дней для шкалы
+    var days;
+    if (selectedPeriod === 0) {
+      // "Всё время" — от даты создания до сегодня
+      var created = new Date(habit.createdAt);
+      var now = new Date();
+      var diff = Math.floor((now - created) / (1000 * 60 * 60 * 24)) + 1;
+      days = Math.max(diff, 1);
+    } else {
+      days = selectedPeriod;
+    }
 
-    const card = document.createElement('div');
+    // Если дней слишком много — группируем (иначе сегменты будут невидимые)
+    var groupSize = 1;
+    var segsCount = days;
+    if (days > 180) { groupSize = 14; segsCount = Math.ceil(days / 14); }
+    else if (days > 60) { groupSize = 7; segsCount = Math.ceil(days / 7); }
+
+    // Строим сегменты слева = старые, справа = свежие
+    var segments = '';
+    var completedCount = 0;
+
+    for (var s = segsCount - 1; s >= 0; s--) {
+      var filled = false;
+      for (var g = 0; g < groupSize; g++) {
+        var dayIndex = s * groupSize + g;
+        if (dayIndex >= days) continue;
+        var d = new Date();
+        d.setDate(d.getDate() - dayIndex);
+        if (habit.completions[dateKey(d)]) {
+          filled = true;
+          completedCount++;
+        }
+      }
+      segments += '<div class="progress-seg' + (filled ? ' filled' : '') + '"></div>';
+    }
+
+    var card = document.createElement('div');
     card.className = 'progress-card';
     card.innerHTML =
       '<div class="habit-name">' + habit.name + '</div>' +
-      '<div class="progress-percent">' + prog.percent + '%</div>' +
-      '<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:' + prog.percent + '%"></div></div>' +
-      '<div class="progress-stats">' +
-        '<span>✅ Выполнено: ' + prog.completed + ' из ' + prog.target + ' дней</span>' +
-        '<span>🔥 Серия: ' + streak + ' ' + pluralDays(streak) + '</span>' +
-      '</div>';
+      '<div class="progress-bar-wrap">' + segments + '</div>' +
+      '<div class="progress-stats">' + completedCount + ' ' + pluralDays(completedCount) + ' выполнено из ' + days + '</div>';
 
     list.appendChild(card);
   });
