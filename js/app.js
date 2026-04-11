@@ -154,6 +154,15 @@ function saveHabits() {
 // ОТОБРАЖЕНИЕ ПРИВЫЧЕК
 // ==========================================
 
+// Уровень карточки по streak
+function getTier(streak) {
+  if (streak >= 365) return 'tier-plat';
+  if (streak >= 100) return 'tier-gold';
+  if (streak >= 30)  return 'tier-silver';
+  if (streak >= 7)   return 'tier-bronze';
+  return '';
+}
+
 function renderHabits() {
   const list = document.getElementById('habits-list');
   const viewDateStr = viewDay();
@@ -180,20 +189,10 @@ function renderHabits() {
     const isDone = !!habit.completions[viewDateStr];
     const streak = calculateStreak(habit);
 
-    let btnText;
-    if (isDone) {
-      btnText = '✅ Выполнено';
-    } else if (isToday) {
-      btnText = '○ Отметить сегодня';
-    } else {
-      btnText = '○ Отметить за этот день';
-    }
-
+    const tier = getTier(streak);
     const card = document.createElement('div');
-    // Вся карточка кликабельна — нажатие = выполнить/снять
-    card.className = 'habit-card' + (isDone ? ' done' : '');
+    card.className = 'habit-card' + (tier ? ' ' + tier : '') + (isDone ? ' done' : '');
     card.onclick = function(e) {
-      // Если нажали на кнопку "⋯" — не переключаем, а открываем меню
       if (e.target.closest('.habit-options-btn')) return;
       toggleHabit(habit.id);
     };
@@ -207,8 +206,7 @@ function renderHabits() {
       '<div class="habit-info">' +
         '<span class="streak-badge">🔥 ' + streak + ' ' + pluralDays(streak) + '</span>' +
         '<span class="goal-badge">🎯 ' + goalLabel(habit.goalDays) + '</span>' +
-        // Иконка статуса справа
-        '<span class="check-btn">' + (isDone ? '✅' : '○') + '</span>' +
+        '<span class="check-btn">' + (isDone ? '✓' : '') + '</span>' +
       '</div>';
 
     list.appendChild(card);
@@ -290,6 +288,7 @@ function showPage(pageName) {
   document.getElementById('nav-' + pageName).classList.add('active');
 
   if (pageName === 'progress') renderProgress();
+  if (pageName === 'achievements') renderAchievements();
 }
 
 function selectPeriod(days) {
@@ -315,6 +314,14 @@ function toggleHabit(id) {
 
   saveHabits();
   renderHabits();
+
+  // Проверяем не разблокировалось ли новое достижение
+  var newAch = checkAchievements();
+  if (newAch.length > 0) {
+    setTimeout(function() {
+      alert('🏆 Новая награда: ' + newAch[0].icon + ' ' + newAch[0].title + '!');
+    }, 300);
+  }
 }
 
 // ==========================================
@@ -458,3 +465,146 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.key === 'Enter') saveHabit();
   });
 });
+
+// ==========================================
+// ДОСТИЖЕНИЯ
+// ==========================================
+
+// Список всех достижений с условиями разблокировки
+var ACHIEVEMENTS = [
+  // Серии
+  { id: 'streak3',   icon: '🌱', title: 'Первые шаги',          desc: '3 дня подряд',             category: 'Серии дней',  check: function(s) { return s.maxStreak >= 3; } },
+  { id: 'streak7',   icon: '🔥', title: 'Неделя без пропусков', desc: '7 дней подряд',             category: 'Серии дней',  check: function(s) { return s.maxStreak >= 7; } },
+  { id: 'streak30',  icon: '💪', title: 'Железная воля',        desc: '30 дней подряд',            category: 'Серии дней',  check: function(s) { return s.maxStreak >= 30; } },
+  { id: 'streak100', icon: '👑', title: 'Легенда',              desc: '100 дней подряд',           category: 'Серии дней',  check: function(s) { return s.maxStreak >= 100; } },
+  { id: 'streak365', icon: '🌌', title: 'Вне времени',          desc: '365 дней подряд',           category: 'Серии дней',  check: function(s) { return s.maxStreak >= 365; } },
+  // Выполнения (считается лучшая привычка)
+  { id: 'done10',    icon: '⚡️', title: 'Начало положено',      desc: '10 выполнений одной привычки',  category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 10; } },
+  { id: 'done50',    icon: '🎯', title: 'Полпути',              desc: '50 выполнений одной привычки',  category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 50; } },
+  { id: 'done100',   icon: '🏆', title: 'Мастер привычки',      desc: '100 выполнений одной привычки', category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 100; } },
+  { id: 'done200',   icon: '💎', title: 'Бриллиантовый уровень', desc: '200 выполнений одной привычки', category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 200; } },
+  { id: 'done365',   icon: '🔱', title: 'Год посвящения',       desc: '365 выполнений одной привычки', category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 365; } },
+  // Привычки
+  { id: 'habits3',   icon: '🌀', title: 'Многозадачность',      desc: '3 привычки одновременно',       category: 'Привычки',   check: function(s) { return s.habitCount >= 3; } },
+  { id: 'habits5',   icon: '🚀', title: 'Машина продуктивности', desc: '5 привычек одновременно',      category: 'Привычки',   check: function(s) { return s.habitCount >= 5; } },
+  { id: 'habits7',   icon: '🧠', title: 'Архитектор жизни',     desc: '7 привычек одновременно',       category: 'Привычки',   check: function(s) { return s.habitCount >= 7; } },
+  { id: 'goal1',     icon: '🎖️', title: 'Слово держу',          desc: 'Выполнил цель одной привычки',  category: 'Привычки',   check: function(s) { return s.completedGoals >= 1; } },
+  { id: 'goal3',     icon: '🌟', title: 'Человек слова',        desc: 'Выполнил цели 3 привычек',      category: 'Привычки',   check: function(s) { return s.completedGoals >= 3; } },
+];
+
+// Считаем статистику по всем привычкам
+function calcStats() {
+  var totalDone = 0;
+  var maxStreak = 0;
+  var bestHabitDone = 0;
+  var habitCount = habits.length;
+  var completedGoals = 0;
+
+  habits.forEach(function(habit) {
+    var done = Object.keys(habit.completions).length;
+    totalDone += done;
+    // Лучшая привычка по количеству выполнений
+    if (done > bestHabitDone) bestHabitDone = done;
+    // Максимальный streak
+    var s = calculateStreak(habit);
+    if (s > maxStreak) maxStreak = s;
+    // Выполнена ли цель (выполнений >= goalDays)
+    if (done >= habit.goalDays) completedGoals++;
+  });
+
+  return {
+    totalDone: totalDone,
+    maxStreak: maxStreak,
+    habitCount: habitCount,
+    bestHabitDone: bestHabitDone,
+    completedGoals: completedGoals
+  };
+}
+
+// Загружаем сохранённые данные о достижениях (дата получения)
+function loadAchievements() {
+  return JSON.parse(localStorage.getItem('achievements')) || {};
+}
+
+function saveAchievements(data) {
+  localStorage.setItem('achievements', JSON.stringify(data));
+}
+
+// Проверяем новые достижения и сохраняем дату получения
+function checkAchievements() {
+  var stats = calcStats();
+  var unlocked = loadAchievements();
+  var newOnes = [];
+
+  ACHIEVEMENTS.forEach(function(a) {
+    if (!unlocked[a.id] && a.check(stats)) {
+      unlocked[a.id] = today(); // сохраняем дату получения
+      newOnes.push(a);
+    }
+  });
+
+  if (newOnes.length > 0) {
+    saveAchievements(unlocked);
+  }
+  return newOnes;
+}
+
+// Рендер страницы достижений
+function renderAchievements() {
+  checkAchievements(); // сначала проверяем новые
+
+  var unlocked = loadAchievements();
+  var stats = calcStats();
+  var list = document.getElementById('achievements-list');
+  var unlockedCount = Object.keys(unlocked).length;
+
+  // Подзаголовок
+  document.getElementById('ach-subtitle').textContent =
+    unlockedCount + ' из ' + ACHIEVEMENTS.length + ' наград получено';
+
+  // Счётчики сверху — 4 блока в один ряд
+  var totalAch = ACHIEVEMENTS.length;
+  var pct = Math.round(unlockedCount / totalAch * 100);
+  var countersHtml =
+    '<div class="ach-counters">' +
+      '<div class="ach-stat"><div class="ach-stat-val">' + unlockedCount + '/' + totalAch + '</div><div class="ach-stat-label">наград</div></div>' +
+      '<div class="ach-stat"><div class="ach-stat-val">' + pct + '%</div><div class="ach-stat-label">прогресс</div></div>' +
+      '<div class="ach-stat"><div class="ach-stat-val">' + stats.maxStreak + '</div><div class="ach-stat-label">макс. серия</div></div>' +
+      '<div class="ach-stat"><div class="ach-stat-val">' + stats.bestHabitDone + '</div><div class="ach-stat-label">лучшая привычка</div></div>' +
+    '</div>';
+
+  // Группируем по категориям
+  var categories = {};
+  ACHIEVEMENTS.forEach(function(a) {
+    if (!categories[a.category]) categories[a.category] = [];
+    categories[a.category].push(a);
+  });
+
+  var sectionsHtml = '';
+  Object.keys(categories).forEach(function(cat) {
+    sectionsHtml += '<div class="ach-section"><div class="ach-section-title">' + cat + '</div><div class="ach-grid">';
+    categories[cat].forEach(function(a) {
+      var isUnlocked = !!unlocked[a.id];
+      var dateHtml = isUnlocked ? '<div class="ach-date">получено ' + formatShortDate(unlocked[a.id]) + '</div>' : '';
+      var lockHtml = isUnlocked ? '' : '<span class="ach-lock">🔒</span>';
+      sectionsHtml +=
+        '<div class="ach-card' + (isUnlocked ? ' unlocked' : ' locked') + '">' +
+          lockHtml +
+          '<span class="ach-icon">' + a.icon + '</span>' +
+          '<div class="ach-card-title">' + a.title + '</div>' +
+          '<div class="ach-card-desc">' + a.desc + '</div>' +
+          dateHtml +
+        '</div>';
+    });
+    sectionsHtml += '</div></div>';
+  });
+
+  list.innerHTML = countersHtml + sectionsHtml;
+}
+
+// Короткий формат даты: "5 апр"
+function formatShortDate(dateStr) {
+  var months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  var d = new Date(dateStr);
+  return d.getDate() + ' ' + months[d.getMonth()];
+}
