@@ -1,525 +1,460 @@
-/* ==========================================
-   ОБЩИЕ НАСТРОЙКИ
-   ========================================== */
+// ==========================================
+// ТРЕКЕР ПРИВЫЧЕК — ГЛАВНЫЙ ФАЙЛ v2
+// ==========================================
 
-* {
-  box-sizing: border-box;  /* Чтобы padding не увеличивал размер элементов */
-  margin: 0;
-  padding: 0;
-  -webkit-tap-highlight-color: transparent; /* Убираем синий фон при тапе на мобиле */
+// ==========================================
+// ИНИЦИАЛИЗАЦИЯ TELEGRAM MINI APP
+// ==========================================
+
+const tg = window.Telegram?.WebApp;
+
+if (tg) {
+  tg.ready();
+  tg.expand();
+  if (tg.colorScheme === 'dark') {
+    document.body.classList.add('dark');
+  }
 }
 
-:root {
-  /* Цвета — меняй их здесь, если хочешь другую тему */
-  --bg: #f4f4f8;
-  --card-bg: #ffffff;
-  --primary: #5b5ef6;       /* Фиолетовый — основной цвет */
-  --primary-light: #ebebff;
-  --success: #34c759;       /* Зелёный — выполнено */
-  --success-light: #e5f8ec;
-  --danger: #ff3b30;        /* Красный — удалить */
-  --text: #1a1a2e;          /* Тёмный текст */
-  --text-muted: #8888aa;    /* Серый текст */
-  --border: #e2e2ee;
-  --streak-color: #ff9500;  /* Оранжевый — серия дней */
-  --nav-height: 64px;       /* Высота нижней навигации */
+// ==========================================
+// ПЕРЕМЕННЫЕ — "ПАМЯТЬ" ПРИЛОЖЕНИЯ
+// ==========================================
+
+let habits = JSON.parse(localStorage.getItem('habits')) || [];
+let selectedPeriod = 7;
+let currentOptionsId = null;
+
+// Смещение просматриваемого дня.
+// 0 = сегодня, -1 = вчера, -2 = позавчера, и т.д.
+// Нельзя зайти в будущее (больше 0).
+let viewOffset = 0;
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ С ДАТАМИ
+// ==========================================
+
+// Возвращает строку-ключ для даты в формате "2024-01-15"
+function dateKey(date) {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return year + '-' + month + '-' + day;
 }
 
-/* Тёмная тема Telegram */
-body.dark {
-  --bg: #1c1c28;
-  --card-bg: #28283c;
-  --primary: #7b7dff;
-  --primary-light: #2d2d50;
-  --success: #30d158;
-  --success-light: #1a3020;
-  --border: #3a3a50;
-  --text: #f0f0ff;
-  --text-muted: #8888aa;
+// Ключ для РЕАЛЬНОГО сегодня (не зависит от viewOffset)
+function today() {
+  return dateKey(new Date());
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  padding-bottom: var(--nav-height); /* Место для нижней навигации */
+// Ключ для просматриваемого дня (с учётом смещения)
+function viewDay() {
+  const d = new Date();
+  d.setDate(d.getDate() + viewOffset);
+  return dateKey(d);
 }
 
-/* ==========================================
-   СТРАНИЦЫ
-   ========================================== */
-
-.page {
-  display: none;    /* По умолчанию скрыта */
-  padding: 16px;
-  max-width: 480px;
-  margin: 0 auto;
+// Красивое название дня для шапки
+function formatDayLabel(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  if (offset === 0) {
+    return d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  if (offset === -1) {
+    return 'Вчера, ' + d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  }
+  return d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-.page.active {
-  display: block;   /* Показываем активную страницу */
+// Название цели по количеству дней
+function goalLabel(days) {
+  const map = { 7: '1 неделя', 14: '2 недели', 30: '1 месяц', 180: '6 месяцев', 365: '1 год' };
+  return map[days] || (days + ' дней');
 }
 
-/* ==========================================
-   ШАПКА СТРАНИЦЫ
-   ========================================== */
+// ==========================================
+// НАВИГАЦИЯ ПО ДНЯМ — СТРЕЛКИ
+// ==========================================
 
-.page-header {
-  margin-bottom: 20px;
+function changeDay(direction) {
+  const newOffset = viewOffset + direction;
+  // Запрещаем уходить в будущее
+  if (newOffset > 0) return;
+  viewOffset = newOffset;
+  renderHabits();
 }
 
-.page-header h1 {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--text);
+// Вернуться на сегодня (тап на дату)
+function goToToday() {
+  if (viewOffset !== 0) {
+    viewOffset = 0;
+    renderHabits();
+  }
 }
 
-.today-date {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin-top: 4px;
+// ==========================================
+// ПОДСЧЁТ СЕРИИ (STREAK)
+// ==========================================
+
+function calculateStreak(habit) {
+  let streak = 0;
+  const todayStr = today(); // всегда от реального сегодня
+
+  if (habit.completions[todayStr]) {
+    streak = 1;
+  }
+
+  const check = new Date();
+  check.setDate(check.getDate() - 1);
+
+  for (let i = 0; i < 365; i++) {
+    const key = dateKey(check);
+    if (habit.completions[key]) {
+      streak++;
+      check.setDate(check.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  return streak;
 }
 
-/* ==========================================
-   КАРТОЧКА ПРИВЫЧКИ
-   ========================================== */
+// ==========================================
+// ПРОГРЕСС К ЦЕЛИ
+// ==========================================
 
-.habit-card {
-  background: var(--card-bg);
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  border: 1.5px solid var(--border);
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  user-select: none;
+function calculateProgress(habit, periodDays) {
+  let completed = 0;
+
+  for (let i = 0; i < periodDays; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    if (habit.completions[dateKey(d)]) {
+      completed++;
+    }
+  }
+
+  const target = Math.min(habit.goalDays, periodDays);
+  const percent = target > 0 ? Math.round((completed / target) * 100) : 0;
+
+  return { completed, target, percent: Math.min(percent, 100) };
 }
 
-/* Карточка выполнена — зелёный контур и лёгкая заливка */
-.habit-card.done {
-  background: var(--success-light);
-  border-color: var(--success);
+// ==========================================
+// СОХРАНЕНИЕ В ПАМЯТЬ
+// ==========================================
+
+function saveHabits() {
+  localStorage.setItem('habits', JSON.stringify(habits));
 }
 
-.habit-card:active {
-  transform: scale(0.985);
-  transition: transform 0.1s;
+// ==========================================
+// ОТОБРАЖЕНИЕ ПРИВЫЧЕК
+// ==========================================
+
+function renderHabits() {
+  const list = document.getElementById('habits-list');
+  const viewDateStr = viewDay();
+  const isToday = (viewOffset === 0);
+
+  // Обновляем дату в шапке
+  document.getElementById('today-label').textContent = formatDayLabel(viewOffset);
+
+  // Подсказка "вернуться к сегодня"
+  const hint = document.getElementById('today-back-hint');
+  hint.textContent = isToday ? '' : '\u21A9 Вернуться к сегодня';
+
+  // Стрелка "вперёд" — неактивна если уже сегодня
+  document.getElementById('btn-next-day').disabled = isToday;
+
+  if (habits.length === 0) {
+    list.innerHTML = '<div class="empty-state"><span class="empty-icon">🌱</span><p>У вас пока нет привычек.<br>Добавьте первую!</p></div>';
+    return;
+  }
+
+  list.innerHTML = '';
+
+  habits.forEach(function(habit) {
+    const isDone = !!habit.completions[viewDateStr];
+    const streak = calculateStreak(habit);
+
+    let btnText;
+    if (isDone) {
+      btnText = '✅ Выполнено';
+    } else if (isToday) {
+      btnText = '○ Отметить сегодня';
+    } else {
+      btnText = '○ Отметить за этот день';
+    }
+
+    const card = document.createElement('div');
+    // Вся карточка кликабельна — нажатие = выполнить/снять
+    card.className = 'habit-card' + (isDone ? ' done' : '');
+    card.onclick = function(e) {
+      // Если нажали на кнопку "⋯" — не переключаем, а открываем меню
+      if (e.target.closest('.habit-options-btn')) return;
+      toggleHabit(habit.id);
+    };
+    card.innerHTML =
+      '<div class="habit-top">' +
+        '<div class="habit-name">' + habit.name + '</div>' +
+        '<button class="habit-options-btn" onclick="openOptionsModal(\'' + habit.id + '\')">' +
+          '⋯' +
+        '</button>' +
+      '</div>' +
+      '<div class="habit-info">' +
+        '<span class="streak-badge">🔥 ' + streak + ' ' + pluralDays(streak) + '</span>' +
+        '<span class="goal-badge">🎯 ' + goalLabel(habit.goalDays) + '</span>' +
+        // Иконка статуса справа
+        '<span class="check-btn">' + (isDone ? '✅' : '○') + '</span>' +
+      '</div>';
+
+    list.appendChild(card);
+  });
 }
 
-/* Верхняя строка карточки */
-.habit-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+// Склонение слова "день"
+function pluralDays(n) {
+  if (n % 100 >= 11 && n % 100 <= 19) return 'дней';
+  const r = n % 10;
+  if (r === 1) return 'день';
+  if (r >= 2 && r <= 4) return 'дня';
+  return 'дней';
 }
 
-/* Название привычки */
-.habit-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  flex: 1;
+// ==========================================
+// ОТОБРАЖЕНИЕ ПРОГРЕССА
+// ==========================================
+
+function renderProgress() {
+  var list = document.getElementById('progress-list');
+
+  if (habits.length === 0) {
+    list.innerHTML = '<div class="empty-state"><span class="empty-icon">📊</span><p>Добавьте привычки, чтобы<br>видеть свой прогресс.</p></div>';
+    return;
+  }
+
+  list.innerHTML = '';
+
+  habits.forEach(function(habit) {
+    // Диапазон дней для шкалы — просто берём выбранный период
+    var days = selectedPeriod;
+
+    // Шкала всегда показывает ровно столько делений, сколько дней.
+    // Каждое деление = 1 день. Это работает визуально потому что
+    // CSS flex растягивает каждое деление пропорционально ширине полосы.
+    // Никакой группировки не нужно — браузер сам делает деления тонкими.
+    var segsCount = days;
+    var completedCount = 0;
+
+    // Строим HTML для всех сегментов разом (быстрее чем по одному)
+    // s=0 → самый старый день (days-1 дней назад), s=segsCount-1 → сегодня
+    var segParts = [];
+    for (var s = 0; s < segsCount; s++) {
+      var daysAgo = segsCount - 1 - s; // 0 = сегодня, segsCount-1 = самый старый
+      var d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      var key = dateKey(d);
+      var done = !!habit.completions[key];
+      if (done) completedCount++;
+      segParts.push(done ? '1' : '0');
+    }
+
+    // Собираем сегменты в одну строку HTML
+    var segments = segParts.map(function(v) {
+      return '<div class="progress-seg' + (v === '1' ? ' filled' : '') + '"></div>';
+    }).join('');
+
+    var card = document.createElement('div');
+    card.className = 'progress-card';
+    card.innerHTML =
+      '<div class="habit-name">' + habit.name + '</div>' +
+      '<div class="progress-bar-wrap">' + segments + '</div>' +
+      '<div class="progress-stats">' + completedCount + ' ' + pluralDays(completedCount) + ' выполнено из ' + days + '</div>';
+
+    list.appendChild(card);
+  });
 }
 
-/* Кнопка опций (три точки) */
-.habit-options-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 0 4px;
-  line-height: 1;
+// ==========================================
+// ПЕРЕКЛЮЧЕНИЕ СТРАНИЦ
+// ==========================================
+
+function showPage(pageName) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+
+  document.getElementById('page-' + pageName).classList.add('active');
+  document.getElementById('nav-' + pageName).classList.add('active');
+
+  if (pageName === 'progress') renderProgress();
 }
 
-/* Нижняя строка карточки: бейджи + кнопка в одну линию */
-.habit-info {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: nowrap;
-  overflow: hidden;
+function selectPeriod(days) {
+  selectedPeriod = days;
+  renderProgress();
 }
 
-/* Бейдж серии дней */
-.streak-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: #fff3e0;
-  color: var(--streak-color);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 20px;
+// ==========================================
+// ОТМЕТКА ПРИВЫЧКИ
+// ==========================================
+
+function toggleHabit(id) {
+  const habit = habits.find(function(h) { return h.id === id; });
+  if (!habit) return;
+
+  const dayStr = viewDay(); // отмечаем тот день, который сейчас просматриваем
+
+  if (habit.completions[dayStr]) {
+    delete habit.completions[dayStr];
+  } else {
+    habit.completions[dayStr] = true;
+  }
+
+  saveHabits();
+  renderHabits();
 }
 
-.dark .streak-badge {
-  background: #3a2800;
+// ==========================================
+// УДАЛЕНИЕ ПРИВЫЧКИ
+// ==========================================
+
+function deleteHabit() {
+  if (!confirm('Удалить эту привычку? Данные будут потеряны.')) return;
+  habits = habits.filter(function(h) { return h.id !== currentOptionsId; });
+  saveHabits();
+  renderHabits();
+  closeOptionsModal();
 }
 
-/* Бейдж цели */
-.goal-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 20px;
+// ==========================================
+// ДОБАВЛЕНИЕ ПРИВЫЧКИ
+// ==========================================
+
+function openAddModal() {
+  document.getElementById('habit-name').value = '';
+  document.getElementById('add-modal').classList.add('open');
+  setTimeout(function() { document.getElementById('habit-name').focus(); }, 100);
 }
 
-/* Статус выполнения — иконка справа, не кнопка */
-.check-btn {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 18px;
-  line-height: 1;
-  background: none;
-  border: none;
-  cursor: pointer;
-  pointer-events: none; /* клик обрабатывает карточка целиком */
+function closeAddModal() {
+  document.getElementById('add-modal').classList.remove('open');
 }
 
-/* ==========================================
-   ПУСТОЕ СОСТОЯНИЕ (нет привычек)
-   ========================================== */
+function saveHabit() {
+  const name = document.getElementById('habit-name').value.trim();
+  const goalDays = parseInt(document.getElementById('habit-goal').value);
 
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--text-muted);
+  if (!name) {
+    alert('Введите название привычки!');
+    return;
+  }
+
+  habits.push({
+    id: Date.now().toString(),
+    name: name,
+    goalDays: goalDays,
+    createdAt: today(),
+    completions: {}
+  });
+
+  saveHabits();
+  renderHabits();
+  closeAddModal();
 }
 
-.empty-state .empty-icon {
-  font-size: 48px;
-  display: block;
-  margin-bottom: 12px;
+// ==========================================
+// ОПЦИИ ПРИВЫЧКИ
+// ==========================================
+
+function openOptionsModal(id) {
+  currentOptionsId = id;
+  const habit = habits.find(function(h) { return h.id === id; });
+  if (!habit) return;
+  document.getElementById('options-modal-title').textContent = habit.name;
+  document.getElementById('options-modal').classList.add('open');
 }
 
-.empty-state p {
-  font-size: 16px;
-  line-height: 1.5;
+function closeOptionsModal() {
+  document.getElementById('options-modal').classList.remove('open');
+  currentOptionsId = null;
 }
 
-/* ==========================================
-   КНОПКА "ДОБАВИТЬ ПРИВЫЧКУ"
-   ========================================== */
+// ==========================================
+// РЕДАКТИРОВАНИЕ ПРИВЫЧКИ
+// ==========================================
 
-.add-btn {
-  width: 100%;
-  padding: 14px;
-  border-radius: 14px;
-  border: 2px dashed var(--primary);
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 8px;
-  transition: opacity 0.2s;
+function openEditModal() {
+  const habit = habits.find(function(h) { return h.id === currentOptionsId; });
+  if (!habit) return;
+
+  // Сохраняем id ДО закрытия меню (closeOptionsModal обнуляет currentOptionsId)
+  var editingId = currentOptionsId;
+
+  // Закрываем меню опций
+  document.getElementById('options-modal').classList.remove('open');
+  // Восстанавливаем id чтобы saveEdit его нашёл
+  currentOptionsId = editingId;
+
+  // Заполняем поля текущими значениями
+  document.getElementById('edit-name').value = habit.name;
+  document.getElementById('edit-goal').value = habit.goalDays;
+  document.getElementById('edit-modal').classList.add('open');
+
+  setTimeout(function() { document.getElementById('edit-name').focus(); }, 100);
 }
 
-.add-btn:active {
-  opacity: 0.7;
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
 }
 
-/* ==========================================
-   НИЖНЯЯ НАВИГАЦИЯ
-   ========================================== */
+function saveEdit() {
+  const name = document.getElementById('edit-name').value.trim();
+  const goalDays = parseInt(document.getElementById('edit-goal').value);
 
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: var(--nav-height);
-  background: var(--card-bg);
-  border-top: 1px solid var(--border);
-  display: flex;
-  z-index: 100;
+  if (!name) {
+    alert('Введите название привычки!');
+    return;
+  }
+
+  const habit = habits.find(function(h) { return h.id === currentOptionsId; });
+  if (!habit) return;
+
+  // Обновляем поля — данные о выполнении НЕ трогаем
+  habit.name = name;
+  habit.goalDays = goalDays;
+
+  saveHabits();
+  renderHabits();
+  closeEditModal();
+  currentOptionsId = null;
 }
 
-.nav-btn {
-  flex: 1;
-  background: none;
-  border: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 12px;
-  transition: color 0.2s;
+function closeModalOnOverlay(event) {
+  if (event.target.classList.contains('modal-overlay')) {
+    document.querySelectorAll('.modal-overlay').forEach(function(m) { m.classList.remove('open'); });
+    currentOptionsId = null;
+  }
 }
 
-.nav-btn.active {
-  color: var(--primary);
-}
+// Закрытие edit-modal кликом на фон (отдельный обработчик без влияния на кнопки)
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('edit-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      closeEditModal();
+    }
+  });
+});
 
-.nav-icon {
-  font-size: 22px;
-  line-height: 1;
-}
+// ==========================================
+// ЗАПУСК
+// ==========================================
 
-/* ==========================================
-   МОДАЛЬНЫЕ ОКНА
-   ========================================== */
-
-.modal-overlay {
-  display: none;          /* Скрыто по умолчанию */
-  position: fixed;
-  inset: 0;               /* Растягивается на весь экран */
-  background: rgba(0,0,0,0.5);
-  z-index: 200;
-  align-items: flex-end;  /* Модалка снизу (как в iOS) */
-  justify-content: center;
-}
-
-.modal-overlay.open {
-  display: flex;          /* Показываем при открытии */
-}
-
-.modal {
-  background: var(--card-bg);
-  border-radius: 24px 24px 0 0;
-  padding: 24px 20px 32px;
-  width: 100%;
-  max-width: 480px;
-}
-
-.modal h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 20px;
-  color: var(--text);
-}
-
-.modal label {
-  display: block;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  margin-top: 14px;
-}
-
-.modal input,
-.modal select {
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1.5px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 16px;
-  outline: none;
-}
-
-.modal input:focus,
-.modal select:focus {
-  border-color: var(--primary);
-}
-
-/* Кнопки в модалке */
-.modal-buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.btn-cancel {
-  flex: 1;
-  padding: 13px;
-  border-radius: 12px;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 16px;
-  cursor: pointer;
-}
-
-.btn-save {
-  flex: 2;
-  padding: 13px;
-  border-radius: 12px;
-  border: none;
-  background: var(--primary);
-  color: white;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-save:active {
-  opacity: 0.85;
-}
-
-/* Кнопки опций */
-.option-btn {
-  width: 100%;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1.5px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 16px;
-  text-align: left;
-  cursor: pointer;
-  margin-bottom: 8px;
-}
-
-.option-btn.danger {
-  color: var(--danger);
-  border-color: #ffdddd;
-  background: #fff5f5;
-}
-
-.dark .option-btn.danger {
-  background: #3a1010;
-  border-color: #5a2020;
-}
-
-/* ==========================================
-   НАВИГАТОР ДАТ (СТРЕЛКИ)
-   ========================================== */
-
-.date-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 10px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 6px 8px;
-}
-
-.date-arrow {
-  background: none;
-  border: none;
-  font-size: 26px;
-  color: var(--primary);
-  cursor: pointer;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  transition: background 0.15s;
-  flex-shrink: 0;
-  line-height: 1;
-  padding-bottom: 2px; /* визуальное выравнивание символов ‹ › */
-}
-
-.date-arrow:active {
-  background: var(--primary-light);
-}
-
-/* Кнопка "вперёд" — серая когда мы уже на сегодня */
-.date-arrow:disabled {
-  color: var(--border);
-  cursor: default;
-}
-
-.date-nav-center {
-  flex: 1;
-  text-align: center;
-  cursor: pointer; /* тап = вернуться на сегодня */
-}
-
-.today-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.3;
-}
-
-/* Подсказка "нажмите чтобы вернуться сегодня" */
-.today-back-hint {
-  font-size: 11px;
-  color: var(--primary);
-  margin-top: 1px;
-  min-height: 14px; /* чтобы не прыгала высота */
-}
-
-
-
-.period-select {
-  margin-top: 12px;
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1.5px solid var(--border);
-  background: var(--card-bg);
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238888aa' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-}
-
-.period-select:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-/* Карточка прогресса — компактная */
-.progress-card {
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 10px 14px;
-  margin-bottom: 8px;
-  border: 1px solid var(--border);
-}
-
-.progress-card .habit-name {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--text);
-}
-
-/* Прогресс-бар — сплошная полоса */
-.progress-bar-wrap {
-  display: flex;
-  height: 10px;
-  margin: 0 0 5px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--border);
-  /* min-width 0 чтобы flex не ломался при большом числе детей */
-  min-width: 0;
-}
-
-/* Один сегмент — никаких границ, никаких зазоров, сплошная полоса */
-.progress-seg {
-  flex: 1 1 0;
-  min-width: 0;
-  background: var(--border);
-}
-
-.progress-seg.filled {
-  background: var(--primary);
-}
-
-/* Подпись: X дней выполнено */
-.progress-stats {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-/* Убираем большой процент — не нужен */
-.progress-percent {
-  display: none;
-}
+document.addEventListener('DOMContentLoaded', function() {
+  renderHabits();
+  document.getElementById('habit-name').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') saveHabit();
+  });
+});
