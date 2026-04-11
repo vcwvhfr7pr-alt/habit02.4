@@ -21,6 +21,10 @@
       <span class="nav-icon">📊</span>
       <span>Прогресс</span>
     </button>
+    <button class="nav-btn" onclick="showPage('achievements')" id="nav-achievements">
+      <span class="nav-icon">🏆</span>
+      <span>Награды</span>
+    </button>
   </nav>
 
   <!-- ========== СТРАНИЦА 1: ПРИВЫЧКИ ========== -->
@@ -62,6 +66,15 @@
 
     <!-- Список прогресса (заполняется через JS) -->
     <div id="progress-list" class="progress-list"></div>
+  </div>
+
+  <!-- ========== СТРАНИЦА 3: ДОСТИЖЕНИЯ ========== -->
+  <div id="page-achievements" class="page">
+    <div class="page-header">
+      <h1>Достижения</h1>
+      <div class="ach-subtitle" id="ach-subtitle"></div>
+    </div>
+    <div id="achievements-list"></div>
   </div>
 
   <!-- ========== МОДАЛЬНОЕ ОКНО: ДОБАВИТЬ ПРИВЫЧКУ ========== -->
