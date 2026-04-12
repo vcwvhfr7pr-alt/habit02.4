@@ -96,11 +96,17 @@ body {
   user-select: none;
 }
 
-/* Уровни — цвет зависит от streak */
+/* Уровни — светлая тема */
 .habit-card.tier-bronze { background: #fdf4ec; border-color: #c8864a; }
 .habit-card.tier-silver { background: #f4f5f7; border-color: #8899aa; }
 .habit-card.tier-gold   { background: #fffbea; border-color: #d4a017; }
 .habit-card.tier-plat   { background: #f0f6ff; border-color: #5b8dd9; }
+
+/* Уровни — тёмная тема */
+.dark .habit-card.tier-bronze { background: #2a1f12; border-color: #c8864a; }
+.dark .habit-card.tier-silver { background: #1a1e22; border-color: #8899aa; }
+.dark .habit-card.tier-gold   { background: #261f08; border-color: #d4a017; }
+.dark .habit-card.tier-plat   { background: #0f1a2a; border-color: #5b8dd9; }
 
 /* Выполнено — всегда зелёный поверх любого уровня */
 .habit-card.done {
@@ -166,6 +172,16 @@ body {
 .dark .streak-badge {
   background: #3a2800;
 }
+
+/* Бейджи на цветных карточках в тёмной теме */
+.dark .tier-bronze .streak-badge { background: #3d2510; }
+.dark .tier-bronze .goal-badge   { background: #2e1f0a; }
+.dark .tier-silver .streak-badge { background: #252a2f; }
+.dark .tier-silver .goal-badge   { background: #1e2228; }
+.dark .tier-gold   .streak-badge { background: #332800; }
+.dark .tier-gold   .goal-badge   { background: #2a2000; }
+.dark .tier-plat   .streak-badge { background: #0d1f33; }
+.dark .tier-plat   .goal-badge   { background: #0a1a2e; }
 
 /* Бейдж цели */
 .goal-badge {
