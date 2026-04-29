@@ -210,10 +210,9 @@ function renderHabits() {
       '</div>';
 
     list.appendChild(card);
+    enableDrag(card, habit.id); // включаем перетаскивание
   });
 }
-
-// Склонение слова "день"
 function pluralDays(n) {
   if (n % 100 >= 11 && n % 100 <= 19) return 'дней';
   const r = n % 10;
@@ -479,7 +478,7 @@ var ACHIEVEMENTS = [
   { id: 'streak100', icon: '👑', title: 'Легенда',              desc: '100 дней подряд',           category: 'Серии дней',  check: function(s) { return s.maxStreak >= 100; } },
   { id: 'streak365', icon: '🌌', title: 'Вне времени',          desc: '365 дней подряд',           category: 'Серии дней',  check: function(s) { return s.maxStreak >= 365; } },
   // Выполнения (считается лучшая привычка)
-  { id: 'done10',    icon: '⚡️', title: 'Начало положено',      desc: '10 выполнений одной привычки',  category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 10; } },
+  { id: 'done10',    icon: '⚡', title: 'Начало положено',      desc: '10 выполнений одной привычки',  category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 10; } },
   { id: 'done50',    icon: '🎯', title: 'Полпути',              desc: '50 выполнений одной привычки',  category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 50; } },
   { id: 'done100',   icon: '🏆', title: 'Мастер привычки',      desc: '100 выполнений одной привычки', category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 100; } },
   { id: 'done200',   icon: '💎', title: 'Бриллиантовый уровень', desc: '200 выполнений одной привычки', category: 'Выполнения', check: function(s) { return s.bestHabitDone >= 200; } },
@@ -488,7 +487,7 @@ var ACHIEVEMENTS = [
   { id: 'habits3',   icon: '🌀', title: 'Многозадачность',      desc: '3 привычки одновременно',       category: 'Привычки',   check: function(s) { return s.habitCount >= 3; } },
   { id: 'habits5',   icon: '🚀', title: 'Машина продуктивности', desc: '5 привычек одновременно',      category: 'Привычки',   check: function(s) { return s.habitCount >= 5; } },
   { id: 'habits7',   icon: '🧠', title: 'Архитектор жизни',     desc: '7 привычек одновременно',       category: 'Привычки',   check: function(s) { return s.habitCount >= 7; } },
-  { id: 'goal1',     icon: '🎖️', title: 'Слово держу',          desc: 'Выполнил цель одной привычки',  category: 'Привычки',   check: function(s) { return s.completedGoals >= 1; } },
+  { id: 'goal1',     icon: '🎖', title: 'Слово держу',          desc: 'Выполнил цель одной привычки',  category: 'Привычки',   check: function(s) { return s.completedGoals >= 1; } },
   { id: 'goal3',     icon: '🌟', title: 'Человек слова',        desc: 'Выполнил цели 3 привычек',      category: 'Привычки',   check: function(s) { return s.completedGoals >= 3; } },
 ];
 
@@ -551,16 +550,18 @@ function checkAchievements() {
 
 // Рендер страницы достижений
 function renderAchievements() {
-  checkAchievements(); // сначала проверяем новые
+  checkAchievements();
 
   var unlocked = loadAchievements();
   var stats = calcStats();
   var list = document.getElementById('achievements-list');
+  if (!list) return;
+
   var unlockedCount = Object.keys(unlocked).length;
 
   // Подзаголовок
-  document.getElementById('ach-subtitle').textContent =
-    unlockedCount + ' из ' + ACHIEVEMENTS.length + ' наград получено';
+  var subtitle = document.getElementById('ach-subtitle');
+  if (subtitle) subtitle.textContent = unlockedCount + ' из ' + ACHIEVEMENTS.length + ' наград получено';
 
   // Счётчики сверху — 4 блока в один ряд
   var totalAch = ACHIEVEMENTS.length;
@@ -586,7 +587,7 @@ function renderAchievements() {
     categories[cat].forEach(function(a) {
       var isUnlocked = !!unlocked[a.id];
       var dateHtml = isUnlocked ? '<div class="ach-date">получено ' + formatShortDate(unlocked[a.id]) + '</div>' : '';
-      var lockHtml = isUnlocked ? '' : '<span class="ach-lock">🔒</span>';
+      var lockHtml = isUnlocked ? '' : '<span class="ach-lock" style="font-size:12px;display:block;margin-bottom:2px;color:#888">&#128274;</span>';
       sectionsHtml +=
         '<div class="ach-card' + (isUnlocked ? ' unlocked' : ' locked') + '">' +
           lockHtml +
@@ -607,4 +608,161 @@ function formatShortDate(dateStr) {
   var months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
   var d = new Date(dateStr);
   return d.getDate() + ' ' + months[d.getMonth()];
+}
+
+// ==========================================
+// СОРТИРОВКА КАРТОЧЕК (DRAG & DROP)
+// ==========================================
+// Работает на телефоне (touch) и на компьютере (mouse).
+// Порядок сохраняется в localStorage.
+
+var dragState = {
+  dragging: null,    // карточка которую тащим
+  startY: 0,         // начальная позиция пальца
+  startIndex: 0,     // начальный индекс в массиве
+  placeholder: null  // серая заглушка на месте карточки
+};
+
+// Создаём заглушку — серый прямоугольник на место перетаскиваемой карточки
+function createPlaceholder(height) {
+  var ph = document.createElement('div');
+  ph.className = 'drag-placeholder';
+  ph.style.height = height + 'px';
+  return ph;
+}
+
+// Включаем drag на карточке — вызывается при создании каждой карточки
+function enableDrag(card, habitId) {
+  // Иконка для перетаскивания — добавляем в habit-top
+  var handle = document.createElement('span');
+  handle.className = 'drag-handle';
+  handle.innerHTML = '&#9776;'; // ≡ три полоски
+  handle.setAttribute('title', 'Перетащить');
+  card.querySelector('.habit-top').prepend(handle);
+
+  // Touch (телефон)
+  handle.addEventListener('touchstart', function(e) {
+    startDrag(e.touches[0].clientY, card, habitId);
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchmove', onDragMove, { passive: false });
+  document.addEventListener('touchend', onDragEnd);
+
+  // Mouse (компьютер)
+  handle.addEventListener('mousedown', function(e) {
+    startDrag(e.clientY, card, habitId);
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', onDragMoveMouse);
+  document.addEventListener('mouseup', onDragEnd);
+}
+
+function startDrag(clientY, card, habitId) {
+  dragState.dragging = card;
+  dragState.startY = clientY;
+  dragState.startIndex = habits.findIndex(function(h) { return h.id === habitId; });
+
+  // Создаём заглушку той же высоты
+  dragState.placeholder = createPlaceholder(card.offsetHeight);
+  card.parentNode.insertBefore(dragState.placeholder, card);
+
+  // Стиль перетаскиваемой карточки
+  card.style.position = 'fixed';
+  card.style.zIndex = '999';
+  card.style.width = card.parentNode.offsetWidth + 'px';
+  card.style.opacity = '0.85';
+  card.style.top = card.getBoundingClientRect().top + 'px';
+  card.style.left = card.getBoundingClientRect().left + 'px';
+  card.style.pointerEvents = 'none';
+  card.style.transition = 'none';
+  card.style.boxShadow = '0 8px 24px rgba(0,0,0,0.2)';
+}
+
+function onDragMove(e) {
+  if (!dragState.dragging) return;
+  e.preventDefault();
+  var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  moveCard(clientY);
+}
+
+function onDragMoveMouse(e) {
+  if (!dragState.dragging) return;
+  moveCard(e.clientY);
+}
+
+function moveCard(clientY) {
+  var card = dragState.dragging;
+  var deltaY = clientY - dragState.startY;
+  var origTop = parseFloat(card.style.top);
+
+  // Двигаем карточку за пальцем
+  card.style.top = (origTop + deltaY) + 'px';
+  dragState.startY = clientY;
+
+  // Проверяем над какой карточкой находимся и двигаем заглушку
+  var list = document.getElementById('habits-list');
+  var cards = list.querySelectorAll('.habit-card');
+  var ph = dragState.placeholder;
+  var cardCenter = card.getBoundingClientRect().top + card.offsetHeight / 2;
+
+  cards.forEach(function(other) {
+    if (other === card) return;
+    var otherRect = other.getBoundingClientRect();
+    var otherCenter = otherRect.top + otherRect.height / 2;
+
+    if (cardCenter < otherCenter && ph.nextSibling !== other) {
+      list.insertBefore(ph, other);
+    } else if (cardCenter > otherCenter && other.nextSibling !== ph) {
+      list.insertBefore(ph, other.nextSibling);
+    }
+  });
+}
+
+function onDragEnd() {
+  if (!dragState.dragging) return;
+
+  var card = dragState.dragging;
+  var ph = dragState.placeholder;
+  var list = document.getElementById('habits-list');
+
+  // Вычисляем новый индекс по положению заглушки
+  var allItems = Array.from(list.children);
+  var newIndex = allItems.indexOf(ph);
+
+  // Считаем сколько настоящих карточек до заглушки (не считая саму карточку)
+  var realIndex = 0;
+  for (var i = 0; i < newIndex; i++) {
+    if (allItems[i].classList.contains('habit-card') || allItems[i].classList.contains('drag-placeholder')) {
+      if (allItems[i] !== ph) realIndex++;
+    }
+  }
+
+  // Переставляем в массиве habits
+  var oldIndex = dragState.startIndex;
+  if (oldIndex !== realIndex && realIndex <= habits.length) {
+    var moved = habits.splice(oldIndex, 1)[0];
+    habits.splice(realIndex, 0, moved);
+    saveHabits();
+  }
+
+  // Убираем стили перетаскивания
+  card.style.position = '';
+  card.style.zIndex = '';
+  card.style.width = '';
+  card.style.opacity = '';
+  card.style.top = '';
+  card.style.left = '';
+  card.style.pointerEvents = '';
+  card.style.transition = '';
+  card.style.boxShadow = '';
+
+  if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
+
+  dragState.dragging = null;
+  dragState.placeholder = null;
+
+  // Перерисовываем чисто
+  renderHabits();
 }
