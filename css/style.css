@@ -681,3 +681,33 @@ body {
   margin-top: 6px;
   font-weight: 500;
 }
+
+/* ==========================================
+   DRAG & DROP — СОРТИРОВКА КАРТОЧЕК
+   ========================================== */
+
+/* Иконка-ручка для перетаскивания */
+.drag-handle {
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: grab;
+  padding: 0 6px 0 0;
+  flex-shrink: 0;
+  touch-action: none;
+  opacity: 0.5;
+  line-height: 1;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+/* Заглушка — серый прямоугольник на месте перетаскиваемой карточки */
+.drag-placeholder {
+  border-radius: 14px;
+  margin-bottom: 8px;
+  background: var(--border);
+  opacity: 0.4;
+  border: 2px dashed var(--text-muted);
+}
